@@ -76,12 +76,17 @@ app.use(errorHandler);
 // Create WebSocket server for terminals
 createTerminalServer(server);
 
-server.listen(PORT, HOST, () => {
+// Force IPv4 binding to match frontend behavior
+server.listen({
+  port: PORT,
+  host: HOST,
+  family: 4  // Force IPv4
+}, () => {
   const serverUrl = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
-  console.log(`Server running on ${HOST}:${PORT}`);
+  console.log(`Server running on ${HOST}:${PORT} (IPv4)`);
   console.log(`Accessible at: ${serverUrl}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  writeLog('INFO', 'Server started', { host: HOST, port: PORT, environment: process.env.NODE_ENV || 'development' });
+  writeLog('INFO', 'Server started', { host: HOST, port: PORT, family: 'IPv4', environment: process.env.NODE_ENV || 'development' });
   startScheduler();
 });
 
