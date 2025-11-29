@@ -1,0 +1,30 @@
+{
+  "name": "opencore-backend",
+  "version": "1.0.0",
+  "description": "Secure system stats API backend",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "keywords": [
+    "system-stats",
+    "api",
+    "monitoring"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^12.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "systeminformation": "^5.21.20",
+    "ws": "^8.18.0"
+  }
+}

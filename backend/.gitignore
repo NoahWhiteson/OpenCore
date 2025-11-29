@@ -1,0 +1,10 @@
+node_modules/
+.env
+*.log
+.DS_Store
+database/data/
+*.db
+*.db-shm
+*.db-wal
+.runtime.json
+.crash-log.json
