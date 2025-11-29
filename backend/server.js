@@ -99,7 +99,7 @@ server.on('error', (err) => {
   } else if (err.code === 'EACCES') {
     console.error(`Permission denied. Cannot bind to port ${PORT}. Try using a port above 1024 or run with sudo.`);
   } else {
-    console.error('Server error:', err);
+    console.error('Server error | ', err);
   }
   process.exit(1);
 });
