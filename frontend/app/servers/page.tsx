@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { AuthGuard } from '@/components/auth-guard';
 import { Logo } from '@/components/logo';
 import { Navbar } from '@/components/navbar';
@@ -17,6 +18,7 @@ import { toast } from 'sonner';
 export default function ServersPage() {
   const user = getUserFromToken();
   const username = user?.username || 'User';
+  const router = useRouter();
   const [servers, setServers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -270,6 +272,7 @@ export default function ServersPage() {
                             size="sm" 
                             className="w-full bg-green-600 hover:bg-green-700 text-white"
                             disabled={server.status === 'offline'}
+                            onClick={() => router.push(`/server/${server.id}`)}
                           >
                             <Activity className="h-4 w-4 mr-2" />
                             Connect
