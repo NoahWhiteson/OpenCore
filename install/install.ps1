@@ -95,7 +95,7 @@ $ENCRYPTION_KEY = -join ((48..57) + (65..90) + (97..122) | Get-Random -Count 64 
 
 # Port configuration - generate unique ports
 $BACKEND_PORT_DEFAULT = (3000 + (Get-Random -Maximum 1000))
-$FRONTEND_PORT_DEFAULT = (4000 + (Get-Random -Maximum 1000))
+$FRONTEND_PORT_DEFAULT = 4962
 
 $BACKEND_PORT = Read-Host "Enter backend port (default: $BACKEND_PORT_DEFAULT)"
 if ([string]::IsNullOrWhiteSpace($BACKEND_PORT)) {
@@ -107,16 +107,59 @@ if ([string]::IsNullOrWhiteSpace($FRONTEND_PORT)) {
     $FRONTEND_PORT = $FRONTEND_PORT_DEFAULT
 }
 
-# Get public IP
-$PUBLIC_IP = Read-Host "Enter your public IP address (or press Enter to auto-detect)"
+# Add firewall rules (Windows)
+Write-Host ""
+Write-Host "Configuring firewall..." -ForegroundColor Yellow
+try {
+    # Windows Firewall
+    $firewall = New-Object -ComObject HNetCfg.FwMgr
+    $firewallProfile = $firewall.LocalPolicy.CurrentProfile
+    
+    # Add backend port
+    $backendRule = New-Object -ComObject HNetCfg.FwOpenPort
+    $backendRule.Port = [int]$BACKEND_PORT
+    $backendRule.Protocol = 6  # TCP
+    $backendRule.Name = "OpenCore Backend"
+    $firewallProfile.GloballyOpenPorts.Add($backendRule)
+    Write-Host "✓ Allowed backend port $BACKEND_PORT" -ForegroundColor Green
+    
+    # Add frontend port
+    $frontendRule = New-Object -ComObject HNetCfg.FwOpenPort
+    $frontendRule.Port = [int]$FRONTEND_PORT
+    $frontendRule.Protocol = 6  # TCP
+    $frontendRule.Name = "OpenCore Frontend"
+    $firewallProfile.GloballyOpenPorts.Add($frontendRule)
+    Write-Host "✓ Allowed frontend port $FRONTEND_PORT" -ForegroundColor Green
+    
+    # Add port 4962
+    $port4962Rule = New-Object -ComObject HNetCfg.FwOpenPort
+    $port4962Rule.Port = 4962
+    $port4962Rule.Protocol = 6  # TCP
+    $port4962Rule.Name = "OpenCore Port 4962"
+    $firewallProfile.GloballyOpenPorts.Add($port4962Rule)
+    Write-Host "✓ Allowed port 4962/tcp" -ForegroundColor Green
+} catch {
+    Write-Host "⚠ Could not configure Windows Firewall. You may need to run as Administrator." -ForegroundColor Yellow
+    Write-Host "  Please manually open ports $BACKEND_PORT, $FRONTEND_PORT, and 4962" -ForegroundColor Yellow
+}
+
+# Get public IP (IPv4 only)
+$PUBLIC_IP = Read-Host "Enter your public IPv4 address (or press Enter to auto-detect)"
 if ([string]::IsNullOrWhiteSpace($PUBLIC_IP)) {
     try {
-        $PUBLIC_IP = (Invoke-WebRequest -Uri "https://api.ipify.org" -UseBasicParsing).Content.Trim()
-        Write-Host "Auto-detected IP: $PUBLIC_IP" -ForegroundColor Green
+        # Try to get IPv4 address specifically
+        $PUBLIC_IP = (Invoke-WebRequest -Uri "https://api.ipify.org?format=text" -UseBasicParsing).Content.Trim()
+        Write-Host "Auto-detected IPv4: $PUBLIC_IP" -ForegroundColor Green
     } catch {
         $PUBLIC_IP = "localhost"
         Write-Host "Could not auto-detect IP, using localhost" -ForegroundColor Yellow
     }
+}
+
+# Validate it's an IPv4 address (contains dots, not colons)
+if ($PUBLIC_IP -match ":" -and $PUBLIC_IP -notmatch "\.") {
+    Write-Host "⚠ Warning: Detected IPv6 address. Please enter an IPv4 address (e.g., 72.61.3.42)" -ForegroundColor Yellow
+    $PUBLIC_IP = Read-Host "Enter your public IPv4 address"
 }
 
 # Allowed origins
@@ -138,6 +181,7 @@ ENCRYPTION_KEY=$ENCRYPTION_KEY
 
 # Server Configuration
 PORT=$BACKEND_PORT
+HOST=0.0.0.0
 NODE_ENV=production
 
 # CORS
@@ -151,10 +195,14 @@ Write-Host ""
 Write-Host "Creating .env.local file for frontend..." -ForegroundColor Yellow
 $FRONTEND_ENV = @"
 NEXT_PUBLIC_API_URL=http://${PUBLIC_IP}:${BACKEND_PORT}
+PORT=${FRONTEND_PORT}
+HOST=0.0.0.0
 "@
 
 $FRONTEND_ENV | Out-File -FilePath "frontend\.env.local" -Encoding utf8
 Write-Host "✓ Frontend .env.local file created" -ForegroundColor Green
+Write-Host "⚠ Note: If you change NEXT_PUBLIC_API_URL, you must rebuild the frontend:" -ForegroundColor Yellow
+Write-Host "   cd frontend; npm run build" -ForegroundColor Yellow
 
 Write-Host ""
 Write-Host "Installing backend dependencies..." -ForegroundColor Yellow
@@ -175,6 +223,41 @@ npm run build
 Set-Location ..
 
 Write-Host ""
+Write-Host "Installing OpenCore CLI..." -ForegroundColor Yellow
+
+# Find the install directory (where this script is located)
+$SCRIPT_DIR = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+if (Test-Path $SCRIPT_DIR) {
+    Set-Location $SCRIPT_DIR
+    npm install --silent 2>$null
+
+    # Try to install CLI globally
+    if (Get-Command npm -ErrorAction SilentlyContinue) {
+        Write-Host "Installing OpenCore CLI globally..." -ForegroundColor Yellow
+        npm link 2>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Note: Could not install CLI globally. To install manually:" -ForegroundColor Yellow
+            Write-Host "  cd $SCRIPT_DIR; npm link"
+        }
+    }
+    
+    # Save installation location to CLI config
+    Write-Host "Saving installation location..." -ForegroundColor Yellow
+    $configDir = Join-Path $env:USERPROFILE ".opencore"
+    if (-not (Test-Path $configDir)) {
+        New-Item -ItemType Directory -Path $configDir | Out-Null
+    }
+    $configFile = Join-Path $configDir "config.json"
+    $config = @{
+        installPath = $INSTALL_DIR
+        updatedAt = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+    } | ConvertTo-Json
+    $config | Out-File -FilePath $configFile -Encoding utf8
+    Write-Host "✓ Installation location saved" -ForegroundColor Green
+}
+
+Write-Host ""
 Write-Host "==========================================" -ForegroundColor Cyan
 Write-Host "  Installation Complete!" -ForegroundColor Green
 Write-Host "==========================================" -ForegroundColor Cyan
@@ -184,8 +267,21 @@ Write-Host "  Backend Port: $BACKEND_PORT"
 Write-Host "  Frontend Port: $FRONTEND_PORT"
 Write-Host "  Public URL: http://${PUBLIC_IP}:${FRONTEND_PORT}"
 Write-Host "  Admin Username: $ADMIN_USERNAME"
+Write-Host "  Installation Directory: $INSTALL_DIR"
 Write-Host ""
-Write-Host "To start the servers:"
+Write-Host "To start the servers, use the OpenCore CLI:"
+Write-Host "  opencore backend start"
+Write-Host "  opencore frontend start"
+Write-Host ""
+Write-Host "Or start both:"
+Write-Host "  opencore start"
+Write-Host ""
+Write-Host "To stop servers:"
+Write-Host "  opencore backend stop"
+Write-Host "  opencore frontend stop"
+Write-Host "  opencore stop"
+Write-Host ""
+Write-Host "If the CLI is not available, you can also:"
 Write-Host "  1. Backend: cd $INSTALL_DIR\backend; npm start"
 Write-Host "  2. Frontend: cd $INSTALL_DIR\frontend; npm start"
 Write-Host ""
