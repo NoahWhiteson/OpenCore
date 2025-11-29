@@ -5,6 +5,9 @@ import { writeLog } from './logs.js';
 
 const router = express.Router();
 
+// NOTE: Login rate limiting was disabled to avoid blocking legitimate users
+// during frequent local testing and self-hosted use.
+// If you want to re‑enable it, you can wrap the /login route with this limiter.
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
@@ -57,7 +60,9 @@ function validateInput(username, password) {
   };
 }
 
-router.post('/login', loginLimiter, async (req, res, next) => {
+// Rate limiter intentionally not applied here to avoid "too many login attempts"
+// errors during development / self-hosted operation.
+router.post('/login', async (req, res, next) => {
   try {
     const { username, password } = req.body;
 
