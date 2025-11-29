@@ -2,6 +2,7 @@ import express from 'express';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import os from 'os';
 import { writeLog } from './logs.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -13,15 +14,35 @@ const router = express.Router();
 // Root directory of the repo (two levels up from routes)
 const ROOT_DIR = join(__dirname, '..', '..');
 
+// Enable extra debug logging when troubleshooting update behaviour
+const UPDATE_DEBUG = process.env.UPDATE_DEBUG === 'true';
+
 /**
  * Safely run a git command and return trimmed stdout or throw
  */
 function runGit(command) {
-  return execSync(command, {
-    cwd: ROOT_DIR,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'ignore'],
-  }).trim();
+  try {
+    if (UPDATE_DEBUG) {
+      console.log(`[updates] Running git command: "${command}" in ${ROOT_DIR}`);
+    }
+
+    const output = execSync(command, {
+      cwd: ROOT_DIR,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+
+    if (UPDATE_DEBUG) {
+      console.log(`[updates] git output for "${command}": ${output}`);
+    }
+
+    return output;
+  } catch (error) {
+    if (UPDATE_DEBUG) {
+      console.error(`[updates] git command failed: "${command}"`, error);
+    }
+    throw error;
+  }
 }
 
 /**
@@ -49,10 +70,13 @@ router.get('/check', async (req, res, next) => {
       },
     };
 
+    let remoteUrl = null;
+
     try {
       // Current commit + message
       const currentCommit = runGit('git rev-parse HEAD');
       const currentMessage = runGit('git log -1 --pretty=%s HEAD');
+      remoteUrl = runGit('git config --get remote.origin.url');
 
       // Fetch latest from origin
       execSync('git fetch origin', {
@@ -79,15 +103,43 @@ router.get('/check', async (req, res, next) => {
 
       // Frontend is same repo, so same info
       results.frontend = { ...results.backend };
+
+      if (UPDATE_DEBUG) {
+        console.log('[updates] Update check result', {
+          rootDir: ROOT_DIR,
+          remoteUrl,
+          currentCommit,
+          remoteCommit,
+          hasUpdate,
+          os: {
+            platform: os.platform(),
+            release: os.release(),
+            type: os.type(),
+          },
+          nodeEnv: process.env.NODE_ENV,
+        });
+      }
     } catch (error) {
       results.backend.error = error.message;
       results.frontend.error = error.message;
       writeLog('WARN', 'Failed to check updates', { error: error.message });
     }
 
+    const debugInfo = {
+      rootDir: ROOT_DIR,
+      remoteUrl,
+      os: {
+        platform: os.platform(),
+        release: os.release(),
+        type: os.type(),
+      },
+      nodeEnv: process.env.NODE_ENV || 'development',
+    };
+
     res.json({
       success: true,
       updates: results,
+      debug: debugInfo,
       timestamp: new Date().toISOString(),
     });
   } catch (error) {

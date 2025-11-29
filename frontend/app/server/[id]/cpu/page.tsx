@@ -6,7 +6,7 @@ import { AuthGuard } from '@/components/auth-guard';
 import { Logo } from '@/components/logo';
 import { Navbar } from '@/components/navbar';
 import { fetchServers, fetchMetrics } from '@/lib/api';
-import { getToken } from '@/lib/auth';
+import { getToken, removeToken } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Cpu, Activity, TrendingUp, Thermometer, Zap, Calendar } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { toast } from 'sonner';
 
 // Helper function to format date as YYYY-MM-DD
 const formatDate = (date: Date): string => {
@@ -72,9 +73,18 @@ export default function CpuPage() {
           setError(null);
         }
       } catch (err) {
-        if (isMounted) {
-          setError(err instanceof Error ? err.message : 'Failed to load server');
+        if (!isMounted) return;
+
+        const message = err instanceof Error ? err.message : 'Failed to load server';
+        if (message.includes('Invalid or expired token')) {
+          removeToken();
+          toast.error('Session expired. Please log in again.');
+          router.push('/login');
+          router.refresh();
+          return;
         }
+
+        setError(message);
       } finally {
         if (isMounted) {
           setLoading(false);
@@ -115,6 +125,16 @@ export default function CpuPage() {
         setHistoricalData(formatted);
       } catch (err) {
         console.error('Error loading historical data:', err);
+        const message = err instanceof Error ? err.message : 'Failed to load historical data';
+
+        if (message.includes('Invalid or expired token')) {
+          removeToken();
+          toast.error('Session expired. Please log in again.');
+          router.push('/login');
+          router.refresh();
+          return;
+        }
+
         setHistoricalData([]);
       } finally {
         setLoadingHistorical(false);

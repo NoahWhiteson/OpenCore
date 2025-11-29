@@ -1,16 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { fetchStats, fetchStatsUnencrypted, fetchAllStats } from '@/lib/api';
-import { getToken } from '@/lib/auth';
-import { decrypt } from '@/lib/decrypt';
-import { Cpu, HardDrive, MemoryStick, Activity, Server, Network } from 'lucide-react';
+import { fetchAllStats } from '@/lib/api';
+import { getToken, removeToken } from '@/lib/auth';
+import { Cpu, HardDrive, MemoryStick } from 'lucide-react';
 import { Gauge } from '@/components/gauge';
 import { MetricChart } from '@/components/metric-chart';
+import { toast } from 'sonner';
 
 export function SystemOverview() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [systemData, setSystemData] = useState<any>(null);
   const [cpuData, setCpuData] = useState<any>(null);
@@ -53,10 +55,20 @@ export function SystemOverview() {
         setMemoryHistory(prev => [...prev.slice(-19), { time: now, value: memUsage }]);
         setError(null);
       } catch (err) {
-        if (isMounted) {
-          console.error('Error loading system data:', err);
-          setError(err instanceof Error ? err.message : 'Failed to load system data');
+        if (!isMounted) return;
+
+        console.error('Error loading system data:', err);
+        const message = err instanceof Error ? err.message : 'Failed to load system data';
+
+        if (message.includes('Invalid or expired token')) {
+          removeToken();
+          toast.error('Session expired. Please log in again.');
+          router.push('/login');
+          router.refresh();
+          return;
         }
+
+        setError(message);
       } finally {
         if (isMounted) {
           setLoading(false);
