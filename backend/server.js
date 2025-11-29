@@ -34,6 +34,7 @@ import { writeLog } from './routes/logs.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 const server = createServer(app);
 
 const limiter = rateLimit({
@@ -78,8 +79,22 @@ createTerminalServer(server);
 const HOST = process.env.HOST || '0.0.0.0';
 
 server.listen(PORT, HOST, () => {
+  const serverUrl = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
   console.log(`Server running on ${HOST}:${PORT}`);
+  console.log(`Accessible at: ${serverUrl}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   writeLog('INFO', 'Server started', { host: HOST, port: PORT, environment: process.env.NODE_ENV || 'development' });
   startScheduler();
+});
+
+// Handle errors
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use. Please choose a different port.`);
+  } else if (err.code === 'EACCES') {
+    console.error(`Permission denied. Cannot bind to port ${PORT}. Try using a port above 1024 or run with sudo.`);
+  } else {
+    console.error('Server error:', err);
+  }
+  process.exit(1);
 });

@@ -1,4 +1,6 @@
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+import { getApiBaseUrl } from './url-utils';
+
+const API_BASE_URL = getApiBaseUrl();
 
 export interface LoginResponse {
   token: string;

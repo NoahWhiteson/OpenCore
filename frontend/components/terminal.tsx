@@ -108,10 +108,13 @@ export function Terminal({ serverId, terminalId, token, onCommandReady }: Termin
         }
 
         // Connect WebSocket
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+        const apiUrl = getApiBaseUrl();
         const overrideWs = process.env.NEXT_PUBLIC_TERMINAL_WS_URL || process.env.NEXT_PUBLIC_WS_URL;
-        const baseUrl = overrideWs || apiUrl;
-        const wsUrl = baseUrl.startsWith('ws') ? baseUrl : baseUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+        const baseUrl = overrideWs ? getApiBaseUrl().replace(/^https?:\/\//, overrideWs.startsWith('ws') ? '' : overrideWs.startsWith('wss') ? 'wss://' : 'ws://') : apiUrl;
+        // Normalize URL for WebSocket (handle IPv6)
+        let wsUrl = baseUrl.startsWith('ws') ? baseUrl : baseUrl.replace('http://', 'ws://').replace('https://', 'wss://');
+        // Ensure IPv6 addresses are properly formatted for WebSocket
+        wsUrl = wsUrl.replace(/ws:\/\/(\[.*?\]):/, 'ws://$1:').replace(/wss:\/\/(\[.*?\]):/, 'wss://$1:');
         const ws = new WebSocket(`${wsUrl.replace(/\/$/, '')}/api/terminal?token=${encodeURIComponent(token)}&serverId=${encodeURIComponent(serverId)}&terminalId=${encodeURIComponent(terminalId)}`);
 
         wsRef.current = ws;
