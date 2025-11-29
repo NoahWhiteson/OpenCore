@@ -75,9 +75,11 @@ app.use(errorHandler);
 // Create WebSocket server for terminals
 createTerminalServer(server);
 
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+
+server.listen(PORT, HOST, () => {
+  console.log(`Server running on ${HOST}:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  writeLog('INFO', 'Server started', { port: PORT, environment: process.env.NODE_ENV || 'development' });
+  writeLog('INFO', 'Server started', { host: HOST, port: PORT, environment: process.env.NODE_ENV || 'development' });
   startScheduler();
 });
