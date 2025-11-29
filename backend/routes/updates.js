@@ -10,9 +10,6 @@ const __dirname = dirname(__filename);
 
 const router = express.Router();
 
-// All update routes require authentication
-router.use(authenticateToken);
-
 // Root directory of the repo (two levels up from routes)
 const ROOT_DIR = join(__dirname, '..', '..');
 
@@ -103,8 +100,9 @@ router.get('/check', async (req, res, next) => {
 /**
  * Update backend and/or frontend from GitHub
  * Pulls latest from origin/main and runs npm install / build where needed.
+ * This route is protected by authentication.
  */
-router.post('/update', async (req, res, next) => {
+router.post('/update', authenticateToken, async (req, res, next) => {
   try {
     const { component } = req.body; // 'backend', 'frontend', or 'both'
 
