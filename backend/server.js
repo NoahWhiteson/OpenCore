@@ -26,6 +26,7 @@ import { serversRouter } from './routes/servers.js';
 import { metricsRouter } from './routes/metrics.js';
 import { terminalsRouter } from './routes/terminals.js';
 import { logsRouter } from './routes/logs.js';
+import { updatesRouter } from './routes/updates.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { startScheduler } from './database/scheduler.js';
 import { createTerminalServer } from './terminal-server.js';
@@ -66,6 +67,7 @@ app.use('/api/servers', serversRouter);
 app.use('/api/metrics', metricsRouter);
 app.use('/api/terminals', terminalsRouter);
 app.use('/api/logs', logsRouter);
+app.use('/api/updates', updatesRouter);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

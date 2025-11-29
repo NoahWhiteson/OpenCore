@@ -292,3 +292,66 @@ export async function restartTerminalSession(token: string, serverId: string, te
   return response.json();
 }
 
+export async function checkForUpdates(token: string): Promise<{ success: boolean; updates: any; timestamp: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/updates/check`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let error;
+    try {
+      error = await response.json();
+    } catch {
+      error = { error: 'Failed to check for updates' };
+    }
+    throw new Error(error.error || 'Failed to check for updates');
+  }
+
+  return response.json();
+}
+
+export async function updateComponent(token: string, component: 'backend' | 'frontend' | 'both'): Promise<{ success: boolean; results: any; timestamp: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/updates/update`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ component }),
+  });
+
+  if (!response.ok) {
+    let error;
+    try {
+      error = await response.json();
+    } catch {
+      error = { error: 'Failed to update' };
+    }
+    throw new Error(error.error || 'Failed to update');
+  }
+
+  return response.json();
+}
+
+export async function getVersion(token: string): Promise<{ success: boolean; version: any; timestamp: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/updates/version`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let error;
+    try {
+      error = await response.json();
+    } catch {
+      error = { error: 'Failed to get version' };
+    }
+    throw new Error(error.error || 'Failed to get version');
+  }
+
+  return response.json();
+}
+
