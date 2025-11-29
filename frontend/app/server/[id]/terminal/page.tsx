@@ -10,7 +10,7 @@ import { getToken } from '@/lib/auth';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Terminal, Plus, Trash2, ArrowLeft } from 'lucide-react';
@@ -38,6 +38,9 @@ export default function TerminalPage() {
   const [newTerminalLabel, setNewTerminalLabel] = useState('');
   const [newTerminalColor, setNewTerminalColor] = useState(COLOR_OPTIONS[0].value);
   const [creating, setCreating] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: number; label: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadTerminals();
@@ -89,10 +92,8 @@ export default function TerminalPage() {
     }
   }
 
-  async function handleDeleteTerminal(terminalId: number) {
-    if (!confirm('Are you sure you want to delete this terminal?')) {
-      return;
-    }
+  async function handleDeleteTerminal() {
+    if (!deleteTarget) return;
 
     try {
       const token = getToken();
@@ -101,11 +102,16 @@ export default function TerminalPage() {
         return;
       }
 
-      await deleteTerminal(token, serverId, terminalId);
+      setDeleting(true);
+      await deleteTerminal(token, serverId, deleteTarget.id);
       toast.success('Terminal deleted successfully');
       loadTerminals();
+      setIsDeleteDialogOpen(false);
+      setDeleteTarget(null);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Failed to delete terminal');
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -210,6 +216,44 @@ export default function TerminalPage() {
                 </DialogContent>
               </Dialog>
             </div>
+
+            <Dialog
+              open={isDeleteDialogOpen}
+              onOpenChange={(open) => {
+                setIsDeleteDialogOpen(open);
+                if (!open) {
+                  setDeleteTarget(null);
+                  setDeleting(false);
+                }
+              }}
+            >
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete terminal</DialogTitle>
+                  <DialogDescription>
+                    {deleteTarget
+                      ? `Are you sure you want to delete the terminal "${deleteTarget.label}"? This action cannot be undone.`
+                      : 'Are you sure you want to delete this terminal? This action cannot be undone.'}
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setIsDeleteDialogOpen(false)}
+                    disabled={deleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={handleDeleteTerminal}
+                    disabled={deleting}
+                  >
+                    {deleting ? 'Deleting...' : 'Delete terminal'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {loading ? (
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -316,7 +360,10 @@ export default function TerminalPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleDeleteTerminal(terminal.id)}
+                            onClick={() => {
+                              setDeleteTarget({ id: terminal.id, label: terminal.label });
+                              setIsDeleteDialogOpen(true);
+                            }}
                             className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                           >
                             <Trash2 className="h-4 w-4" />
