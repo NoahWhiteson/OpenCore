@@ -167,6 +167,10 @@ npm run build
 cd ..
 
 echo ""
+echo "Making start scripts executable..."
+chmod +x install/start-backend.sh install/start-frontend.sh 2>/dev/null || true
+
+echo ""
 echo "=========================================="
 echo "  Installation Complete!"
 echo "=========================================="
