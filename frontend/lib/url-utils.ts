@@ -11,20 +11,34 @@
 export function normalizeUrl(url: string): string {
   if (!url) return url;
   
+  // Check if URL already has brackets (already normalized)
+  if (url.includes('[') && url.includes(']')) {
+    return url;
+  }
+  
   // Check if URL contains an IPv6 address (contains colons but not in brackets)
   // IPv6 addresses look like: 2a02:4780:2d:40f7::1
-  const ipv6Pattern = /^https?:\/\/([0-9a-fA-F:]+):(\d+)/;
+  // IPv4 addresses look like: 72.61.3.42:3966
+  const ipv6Pattern = /^(https?:\/\/)([0-9a-fA-F:]+):(\d+)(.*)$/i;
   const match = url.match(ipv6Pattern);
   
   if (match) {
-    const ipv6Address = match[1];
-    const port = match[2];
-    const rest = url.substring(match[0].length);
+    const protocol = match[1];
+    const address = match[2];
+    const port = match[3];
+    const rest = match[4] || '';
+    
+    // Check if it's an IPv4 address (contains dots)
+    if (address.includes('.')) {
+      // IPv4 address - return as-is
+      return url;
+    }
     
     // Check if it's actually an IPv6 address (has more than one colon or contains ::)
-    if (ipv6Address.includes('::') || (ipv6Address.match(/:/g) || []).length > 1) {
+    const colonCount = (address.match(/:/g) || []).length;
+    if (address.includes('::') || colonCount > 1) {
       // Wrap IPv6 address in brackets
-      return `http${url.startsWith('https') ? 's' : ''}://[${ipv6Address}]:${port}${rest}`;
+      return `${protocol}[${address}]:${port}${rest}`;
     }
   }
   
