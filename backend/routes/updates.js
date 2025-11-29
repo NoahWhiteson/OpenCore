@@ -17,6 +17,10 @@ const ROOT_DIR = join(__dirname, '..', '..');
 // Enable extra debug logging when troubleshooting update behaviour
 const UPDATE_DEBUG = process.env.UPDATE_DEBUG === 'true';
 
+// Auto-update settings
+const AUTO_UPDATE_ENABLED = process.env.AUTO_UPDATE === 'true';
+const AUTO_UPDATE_INTERVAL_MS = parseInt(process.env.AUTO_UPDATE_INTERVAL_MS || '900000', 10); // 15 minutes default
+
 /**
  * Safely run a git command and return trimmed stdout or throw
  */
@@ -46,95 +50,108 @@ function runGit(command) {
 }
 
 /**
+ * Core update-check logic shared by API and auto-update scheduler
+ */
+function performUpdateCheck() {
+  const results = {
+    backend: {
+      hasUpdate: false,
+      currentCommit: null,
+      currentMessage: null,
+      remoteCommit: null,
+      remoteMessage: null,
+      error: null,
+    },
+    frontend: {
+      hasUpdate: false,
+      currentCommit: null,
+      currentMessage: null,
+      remoteCommit: null,
+      remoteMessage: null,
+      error: null,
+    },
+  };
+
+  let remoteUrl = null;
+  let currentCommit = null;
+  let remoteCommit = null;
+
+  try {
+    // Current commit + message
+    currentCommit = runGit('git rev-parse HEAD');
+    const currentMessage = runGit('git log -1 --pretty=%s HEAD');
+    remoteUrl = runGit('git config --get remote.origin.url');
+
+    // Fetch latest from origin
+    execSync('git fetch origin', {
+      cwd: ROOT_DIR,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+      timeout: 10000,
+    });
+
+    // Remote commit + message
+    remoteCommit = runGit('git rev-parse origin/main');
+    const remoteMessage = runGit('git log -1 --pretty=%s origin/main');
+
+    const hasUpdate = currentCommit !== remoteCommit;
+
+    results.backend = {
+      hasUpdate,
+      currentCommit,
+      currentMessage,
+      remoteCommit,
+      remoteMessage,
+      error: null,
+    };
+
+    // Frontend is same repo, so same info
+    results.frontend = { ...results.backend };
+
+    if (UPDATE_DEBUG) {
+      console.log('[updates] Update check result', {
+        rootDir: ROOT_DIR,
+        remoteUrl,
+        currentCommit,
+        remoteCommit,
+        hasUpdate,
+        os: {
+          platform: os.platform(),
+          release: os.release(),
+          type: os.type(),
+        },
+        nodeEnv: process.env.NODE_ENV,
+      });
+    }
+  } catch (error) {
+    results.backend.error = error.message;
+    results.frontend.error = error.message;
+    writeLog('WARN', 'Failed to check updates', { error: error.message });
+  }
+
+  const debugInfo = {
+    rootDir: ROOT_DIR,
+    remoteUrl,
+    os: {
+      platform: os.platform(),
+      release: os.release(),
+      type: os.type(),
+    },
+    nodeEnv: process.env.NODE_ENV || 'development',
+    currentCommit,
+    remoteCommit,
+  };
+
+  return { results, debugInfo };
+}
+
+/**
  * Check for updates from GitHub
  * Compares local HEAD with origin/main and returns commit hashes and messages
  */
 router.get('/check', async (req, res, next) => {
   try {
-    const results = {
-      backend: {
-        hasUpdate: false,
-        currentCommit: null,
-        currentMessage: null,
-        remoteCommit: null,
-        remoteMessage: null,
-        error: null,
-      },
-      frontend: {
-        hasUpdate: false,
-        currentCommit: null,
-        currentMessage: null,
-        remoteCommit: null,
-        remoteMessage: null,
-        error: null,
-      },
-    };
-
-    let remoteUrl = null;
-
-    try {
-      // Current commit + message
-      const currentCommit = runGit('git rev-parse HEAD');
-      const currentMessage = runGit('git log -1 --pretty=%s HEAD');
-      remoteUrl = runGit('git config --get remote.origin.url');
-
-      // Fetch latest from origin
-      execSync('git fetch origin', {
-        cwd: ROOT_DIR,
-        encoding: 'utf8',
-        stdio: ['ignore', 'pipe', 'ignore'],
-        timeout: 10000,
-      });
-
-      // Remote commit + message
-      const remoteCommit = runGit('git rev-parse origin/main');
-      const remoteMessage = runGit('git log -1 --pretty=%s origin/main');
-
-      const hasUpdate = currentCommit !== remoteCommit;
-
-      results.backend = {
-        hasUpdate,
-        currentCommit,
-        currentMessage,
-        remoteCommit,
-        remoteMessage,
-        error: null,
-      };
-
-      // Frontend is same repo, so same info
-      results.frontend = { ...results.backend };
-
-      if (UPDATE_DEBUG) {
-        console.log('[updates] Update check result', {
-          rootDir: ROOT_DIR,
-          remoteUrl,
-          currentCommit,
-          remoteCommit,
-          hasUpdate,
-          os: {
-            platform: os.platform(),
-            release: os.release(),
-            type: os.type(),
-          },
-          nodeEnv: process.env.NODE_ENV,
-        });
-      }
-    } catch (error) {
-      results.backend.error = error.message;
-      results.frontend.error = error.message;
-      writeLog('WARN', 'Failed to check updates', { error: error.message });
-    }
-
-    const debugInfo = {
-      rootDir: ROOT_DIR,
-      remoteUrl,
-      os: {
-        platform: os.platform(),
-        release: os.release(),
-        type: os.type(),
-      },
-      nodeEnv: process.env.NODE_ENV || 'development',
-    };
+    const { results, debugInfo } = performUpdateCheck();
 
     res.json({
       success: true,
@@ -303,6 +320,105 @@ router.get('/version', async (req, res, next) => {
   }
 });
 
-export { router as updatesRouter };
+/**
+ * Auto-update scheduler
+ * When AUTO_UPDATE=true, periodically checks for updates and applies them automatically.
+ * NOTE: For production, run the backend under a process manager (systemd, PM2, Docker)
+ * so that if an update requires a restart you can safely handle process restarts.
+ */
+export function startAutoUpdateScheduler() {
+  if (!AUTO_UPDATE_ENABLED) {
+    if (UPDATE_DEBUG) {
+      console.log('[updates] AUTO_UPDATE is disabled; auto-update scheduler not started');
+    }
+    return;
+  }
 
+  async function autoUpdateTick() {
+    try {
+      const { results, debugInfo } = performUpdateCheck();
+
+      const hasUpdate =
+        results.backend?.hasUpdate ||
+        results.frontend?.hasUpdate;
+
+      if (!hasUpdate) {
+        if (UPDATE_DEBUG) {
+          console.log('[updates] Auto-update: no updates available', debugInfo);
+        }
+        return;
+      }
+
+      writeLog('INFO', 'Auto-update: updates detected, applying', {
+        currentCommit: debugInfo.currentCommit,
+        remoteCommit: debugInfo.remoteCommit,
+        remoteUrl: debugInfo.remoteUrl,
+        os: debugInfo.os,
+      });
+
+      // Reuse the same logic as the manual /update endpoint (component 'both')
+      await new Promise((resolve, reject) => {
+        try {
+          // Pull latest changes
+          execSync('git pull origin main', {
+            cwd: ROOT_DIR,
+            encoding: 'utf8',
+            stdio: 'pipe',
+            timeout: 30000,
+          });
+
+          // Install backend dependencies
+          execSync('npm install', {
+            cwd: join(ROOT_DIR, 'backend'),
+            encoding: 'utf8',
+            stdio: 'pipe',
+            timeout: 120000,
+          });
+
+          // Install frontend dependencies
+          execSync('npm install', {
+            cwd: join(ROOT_DIR, 'frontend'),
+            encoding: 'utf8',
+            stdio: 'pipe',
+            timeout: 120000,
+          });
+
+          // Rebuild frontend
+          execSync('npm run build', {
+            cwd: join(ROOT_DIR, 'frontend'),
+            encoding: 'utf8',
+            stdio: 'pipe',
+            timeout: 300000,
+          });
+
+          writeLog('INFO', 'Auto-update: completed successfully', {
+            os: debugInfo.os,
+          });
+          if (UPDATE_DEBUG) {
+            console.log('[updates] Auto-update: completed successfully');
+          }
+
+          resolve(null);
+        } catch (error) {
+          reject(error);
+        }
+      });
+    } catch (error) {
+      writeLog('ERROR', 'Auto-update tick failed', { error: error.message });
+      if (UPDATE_DEBUG) {
+        console.error('[updates] Auto-update tick failed', error);
+      }
+    }
+  }
+
+  // Run once on startup, then on interval
+  autoUpdateTick();
+  setInterval(autoUpdateTick, AUTO_UPDATE_INTERVAL_MS);
+
+  console.log(
+    `[updates] Auto-update scheduler started (interval: ${AUTO_UPDATE_INTERVAL_MS} ms, auto-update enabled: ${AUTO_UPDATE_ENABLED})`,
+  );
+}
+
+export { router as updatesRouter };
 

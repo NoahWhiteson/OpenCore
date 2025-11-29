@@ -26,7 +26,7 @@ import { serversRouter } from './routes/servers.js';
 import { metricsRouter } from './routes/metrics.js';
 import { terminalsRouter } from './routes/terminals.js';
 import { logsRouter } from './routes/logs.js';
-import { updatesRouter } from './routes/updates.js';
+import { updatesRouter, startAutoUpdateScheduler } from './routes/updates.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { startScheduler } from './database/scheduler.js';
 import { createTerminalServer } from './terminal-server.js';
@@ -90,6 +90,7 @@ server.listen({
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
   writeLog('INFO', 'Server started', { host: HOST, port: PORT, family: 'IPv4', environment: process.env.NODE_ENV || 'development' });
   startScheduler();
+  startAutoUpdateScheduler();
 });
 
 // Handle errors
