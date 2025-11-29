@@ -76,8 +76,6 @@ app.use(errorHandler);
 // Create WebSocket server for terminals
 createTerminalServer(server);
 
-const HOST = process.env.HOST || '0.0.0.0';
-
 server.listen(PORT, HOST, () => {
   const serverUrl = `http://${HOST === '0.0.0.0' ? 'localhost' : HOST}:${PORT}`;
   console.log(`Server running on ${HOST}:${PORT}`);

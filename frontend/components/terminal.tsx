@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import '@xterm/xterm/css/xterm.css';
+import { getApiBaseUrl } from '@/lib/url-utils';
 
 // Polyfill for 'self' in browser context
 if (typeof window !== 'undefined') {
