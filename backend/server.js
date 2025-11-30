@@ -34,7 +34,8 @@ import { createServer } from 'http';
 import { writeLog } from './routes/logs.js';
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+// Prefer fixed port 3305 when PORT is not explicitly set
+const PORT = process.env.PORT || 3305;
 const HOST = process.env.HOST || '0.0.0.0';
 const server = createServer(app);
 
