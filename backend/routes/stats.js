@@ -2,6 +2,8 @@ import express from 'express';
 import si from 'systeminformation';
 import { authenticateToken } from '../middleware/auth.js';
 import crypto from 'crypto';
+import os from 'os';
+import { exec } from 'child_process';
 
 const router = express.Router();
 
@@ -444,6 +446,121 @@ router.get('/applications/:pid', authenticateToken, async (req, res, next) => {
 
     const encrypted = encrypt(JSON.stringify(stats));
     res.json({ data: encrypted });
+  } catch (error) {
+    next(error);
+  }
+});
+
+/**
+ * Kill/terminate an application by PID (task manager style)
+ * NOTE: This runs with the same privileges as the backend process.
+ * It may not be able to terminate system/privileged processes.
+ */
+router.post('/applications/:pid/kill', authenticateToken, async (req, res, next) => {
+  try {
+    const pid = parseInt(req.params.pid);
+
+    if (isNaN(pid) || pid <= 0) {
+      return res.status(400).json({ error: 'Invalid PID' });
+    }
+
+    // Do not allow killing the backend itself
+    if (pid === process.pid) {
+      return res.status(400).json({ error: 'Refusing to terminate backend process' });
+    }
+
+    const platform = os.platform();
+
+    await new Promise((resolve, reject) => {
+      let cmd;
+
+      if (platform === 'win32') {
+        // Forcefully terminate process and its child processes on Windows
+        cmd = `taskkill /PID ${pid} /T /F`;
+      } else {
+        // On POSIX systems, try SIGTERM first, then SIGKILL as a fallback
+        try {
+          process.kill(pid, 'SIGTERM');
+          setTimeout(() => {
+            try {
+              // If still alive, SIGKILL
+              process.kill(pid, 0);
+              process.kill(pid, 'SIGKILL');
+            } catch {
+              // Process already exited
+            }
+            resolve();
+          }, 500);
+          return;
+        } catch (err) {
+          // Fallback to kill -9 via shell if direct kill fails
+          cmd = `kill -9 ${pid}`;
+        }
+      }
+
+      exec(cmd, (error) => {
+        if (error) {
+          return reject(error);
+        }
+        resolve();
+      });
+    });
+
+    res.json({ success: true, pid });
+  } catch (error) {
+    console.error('Error killing process:', error);
+    res.status(500).json({ error: 'Failed to terminate process' });
+  }
+});
+
+/**
+ * Unencrypted applications endpoint for UI (summary + process list)
+ * Same data as the encrypted /applications endpoint but returned as raw JSON.
+ */
+router.get('/applications-raw', authenticateToken, async (req, res, next) => {
+  try {
+    const processes = await si.processes().catch(() => ({ list: [] }));
+
+    const processList = (processes.list || []).map(p => ({
+      pid: p.pid,
+      parentPid: p.parentPid,
+      name: p.name,
+      path: p.path,
+      command: p.command,
+      commandLine: p.params || p.command,
+      cpu: p.cpu,
+      cpuu: p.cpuu,
+      mem: p.mem,
+      memVsz: p.memVsz,
+      memRss: p.memRss,
+      priority: p.priority,
+      nice: p.nice,
+      started: p.started,
+      startTime: p.started,
+      runtime: p.started ? Math.floor((Date.now() - new Date(p.started).getTime()) / 1000) : null,
+      state: p.state,
+      tty: p.tty,
+      user: p.user,
+      uid: p.uid,
+      gid: p.gid,
+      threads: p.threads,
+      handles: p.handles,
+      platform: p.platform,
+      sessionId: p.sessionId
+    }));
+
+    const stats = {
+      summary: {
+        totalProcesses: processList.length,
+        runningProcesses: processList.filter(p => p.state === 'running').length,
+        totalMemory: processList.reduce((sum, p) => sum + (p.memRss || 0), 0),
+        totalCpu: processList.reduce((sum, p) => sum + (p.cpu || 0), 0)
+      },
+      applications: processList.sort((a, b) => (b.cpu || 0) - (a.cpu || 0)),
+      timestamp: new Date().toISOString()
+    };
+
+    res.json(stats);
   } catch (error) {
     next(error);
   }

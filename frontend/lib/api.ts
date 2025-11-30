@@ -292,6 +292,47 @@ export async function restartTerminalSession(token: string, serverId: string, te
   return response.json();
 }
 
+export async function fetchApplications(token: string): Promise<{ summary: any; applications: any[]; timestamp: string }> {
+  const response = await fetch(`${API_BASE_URL}/api/stats/applications-raw`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let error;
+    try {
+      error = await response.json();
+    } catch {
+      error = { error: 'Failed to fetch applications' };
+    }
+    throw new Error(error.error || 'Failed to fetch applications');
+  }
+
+  return response.json();
+}
+
+export async function killApplication(token: string, pid: number): Promise<{ success: boolean; pid: number }> {
+  const response = await fetch(`${API_BASE_URL}/api/stats/applications/${pid}/kill`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    let error;
+    try {
+      error = await response.json();
+    } catch {
+      error = { error: 'Failed to kill application' };
+    }
+    throw new Error(error.error || 'Failed to kill application');
+  }
+
+  return response.json();
+}
+
 export async function checkForUpdates(token: string): Promise<{ success: boolean; updates: any; timestamp: string }> {
   const response = await fetch(`${API_BASE_URL}/api/updates/check`, {
     headers: {
